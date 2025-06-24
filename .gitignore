@@ -1,0 +1,26 @@
+# File: .gitignore
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.py[cod]
+
+# Virtual Environment
+venv/
+.venv/
+env/
+.env
+
+# Project specific
+output/
+output/profiles/
+output/errors/
+output/history/
+output/logs/
+output/reports/
+output/screenshots/
+presets/
+proxies_temp.txt
+*.log

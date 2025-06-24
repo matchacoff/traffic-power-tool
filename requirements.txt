@@ -1,0 +1,23 @@
+# File: requirements.txt
+
+# --- Core Application Libraries ---
+streamlit
+pandas
+openpyxl
+playwright
+Faker
+plotly
+
+# --- Web & Network Utilities ---
+httpx[http2]
+
+# --- Data & Analytics Integration ---
+google-analytics-data
+
+# --- Configuration & Security ---
+python-dotenv
+
+# --- Development & Testing Tools ---
+pytest
+pytest-asyncio
+ruff
