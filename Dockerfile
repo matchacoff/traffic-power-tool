@@ -38,5 +38,4 @@ EXPOSE 8501
 HEALTHCHECK CMD streamlit hello --server.port 8501 || exit 1
 
 # Default command to run the Streamlit application
-CMD ["streamlit", "run", "app.py", "--server.port=${PORT}", "--server.address=0.0.0.0"]
-
+CMD sh -c "streamlit run app.py --server.port=${PORT} --server.address=0.0.0.0"
