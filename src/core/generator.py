@@ -86,6 +86,7 @@ class AdvancedTrafficGenerator:
             "35-44": (35, 44),
             "45-54": (45, 54),
             "55+": (55, 75),  # Batas atas 75 untuk rentang 55+
+            "18-75": (18, 75),  # Tambahkan untuk mode Random Usia
         }
         age_groups, age_weights = zip(*self.config.age_distribution.items())
         selected_age_group = choices(age_groups, weights=age_weights, k=1)[0]

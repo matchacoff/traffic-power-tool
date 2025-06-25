@@ -19,7 +19,7 @@ import pandas as pd
 import streamlit as st
 import plotly.express as px
 
-from src.core.config import DEFAULT_PERSONAS, Persona, TrafficConfig
+from src.core.config import DEFAULT_PERSONAS, Persona, TrafficConfig, INTERNATIONAL_COUNTRIES
 from src.core.generator import AdvancedTrafficGenerator
 from src.utils.reporting import create_ga4_compatible_csv, create_report_excel, parse_keywords_from_string
 
@@ -50,7 +50,7 @@ def initialize_live_stats():
     st.session_state.live_stats = {
         "completed": 0, "successful": 0, "failed": 0, "total_duration": 0.0, "missions_accomplished": 0,
         "persona_counts": Counter(), "device_counts": Counter(), "visitor_counts": Counter(), "web_vitals": [],
-        "clicks": [], "gender_counts": Counter()  # Tambahan untuk gender_counts
+        "clicks": [], "gender_counts": Counter(), "country_counts": Counter(), "age_counts": Counter()  # Tambahkan age_counts
     }
     st.session_state.log_messages = ["Menunggu proses dimulai..."]
     st.session_state.all_ga4_events = []
@@ -148,12 +148,14 @@ with main_tabs[0]:
         result_tabs = st.tabs(["Statistik Detail", "Log Interaktif", "Kinerja Web (Vitals)"])
         with result_tabs[0]:
             st.write("Rincian sesi berdasarkan berbagai kategori.")
-            d1, d2, d3, d4 = st.columns(4)
+            d1, d2, d3, d4, d5, d6 = st.columns(6)
             for col, key, title in [
                 (d1, "persona_counts", "Persona"),
                 (d2, "device_counts", "Perangkat"),
                 (d3, "visitor_counts", "Tipe Pengunjung"),
-                (d4, "gender_counts", "Gender")
+                (d4, "gender_counts", "Gender"),
+                (d5, "country_counts", "Negara"),
+                (d6, "age_counts", "Usia")
             ]:
                 if final_stats.get(key):
                     items = list(final_stats[key].items())
@@ -164,9 +166,14 @@ with main_tabs[0]:
                         col.write(f"**Berdasarkan {title}:**")
                         col.dataframe(df, use_container_width=True, hide_index=True)
                         col.download_button(f"Unduh Data {title}", df.to_csv(index=False).encode('utf-8'), f"{title.lower()}_stats.csv", "text/csv")
-                        # Visualisasi pie chart untuk gender
-                        if key == "gender_counts" and len(df) > 0:
-                            fig = px.pie(df, names=title, values="Jumlah", title="Distribusi Gender")
+                        # Visualisasi pie chart untuk gender, country, dan age
+                        if key in ["gender_counts", "country_counts", "age_counts"] and len(df) > 0:
+                            if key == "country_counts":
+                                # Untuk country, ambil top 10 saja agar chart tidak terlalu penuh
+                                df_chart = df.head(10)
+                            else:
+                                df_chart = df
+                            fig = px.pie(df_chart, names=title, values="Jumlah", title=f"Distribusi {title}")
                             col.plotly_chart(fig, use_container_width=True)
         
         with result_tabs[1]:
@@ -237,6 +244,68 @@ with main_tabs[0]:
                     0, 100, 30,
                     help="Persentase kunjungan dari pengunjung lama."
                 )
+                
+                # Tambahkan pengaturan Region/Country
+                st.markdown("<b>🌍 Pengaturan Region/Country</b>", unsafe_allow_html=True)
+                region_mode = st.radio(
+                    "Mode Region:",
+                    ["🌐 Random International", "🎯 Pilih Negara Tertentu", "🇮🇩 Indonesia Only"],
+                    help="Pilih bagaimana bot akan mendistribusikan traffic berdasarkan negara"
+                )
+                
+                country_distribution = {}
+                
+                if region_mode == "🌐 Random International":
+                    st.info("Bot akan menggunakan distribusi internasional yang realistis (US, Indonesia, India, China, dll)")
+                    # Gunakan distribusi internasional default
+                    country_distribution = INTERNATIONAL_COUNTRIES
+                    
+                elif region_mode == "🎯 Pilih Negara Tertentu":
+                    st.info("Pilih negara-negara target dan bobot distribusinya")
+                    # Pilih beberapa negara favorit
+                    popular_countries = [
+                        "United States", "Indonesia", "India", "China", "Brazil", 
+                        "United Kingdom", "Germany", "Japan", "France", "Canada",
+                        "Australia", "Mexico", "Spain", "Italy", "South Korea",
+                        "Russia", "Netherlands", "Turkey", "Poland", "Argentina"
+                    ]
+                    
+                    selected_countries = st.multiselect(
+                        "Pilih Negara Target:",
+                        popular_countries,
+                        default=["United States", "Indonesia", "India"],
+                        help="Pilih negara-negara yang ingin dijadikan target traffic"
+                    )
+                    
+                    if selected_countries:
+                        st.write("**Atur Bobot Distribusi:**")
+                        for country in selected_countries:
+                            weight = st.slider(
+                                f"Bobot {country}",
+                                1, 50, 10,
+                                help=f"Semakin tinggi bobot, semakin sering bot dari {country}"
+                            )
+                            country_distribution[country] = weight
+                    else:
+                        st.warning("Pilih minimal satu negara!")
+                        
+                elif region_mode == "🇮🇩 Indonesia Only":
+                    st.info("Bot akan fokus hanya pada traffic dari Indonesia")
+                    country_distribution = {"Indonesia": 100}
+                
+                # Tampilkan preview distribusi
+                if country_distribution:
+                    total_weight = sum(country_distribution.values())
+                    if total_weight > 0:
+                        st.write("**Preview Distribusi Negara:**")
+                        preview_data = []
+                        for country, weight in country_distribution.items():
+                            percentage = (weight / total_weight) * 100
+                            preview_data.append({"Negara": country, "Bobot": weight, "Persentase": f"{percentage:.1f}%"})
+                        
+                        preview_df = pd.DataFrame(preview_data)
+                        st.dataframe(preview_df, use_container_width=True, hide_index=True)
+                
                 d1, d2, d3 = st.columns(3)
                 desktop_dist = d1.number_input("Desktop (%)", 0, 100, 60, key="dist_desktop")
                 mobile_dist = d2.number_input("Mobile (%)", 0, 100, 30, key="dist_mobile")
@@ -249,6 +318,92 @@ with main_tabs[0]:
                     0, 100, 50,
                     help="Sisanya otomatis wanita."
                 )
+                
+                # Tambahkan pengaturan Usia
+                st.markdown("<b>👥 Pengaturan Usia</b>", unsafe_allow_html=True)
+                age_mode = st.radio(
+                    "Mode Distribusi Usia:",
+                    ["📊 Distribusi Standar", "🎯 Kustom Distribusi", "🎲 Random Usia"],
+                    help="Pilih bagaimana bot akan mendistribusikan usia pengunjung"
+                )
+                
+                age_distribution = {}
+                
+                if age_mode == "📊 Distribusi Standar":
+                    st.info("Menggunakan distribusi usia yang realistis secara global")
+                    age_distribution = {"18-24": 20, "25-34": 30, "35-44": 25, "45-54": 15, "55+": 10}
+                    
+                elif age_mode == "🎯 Kustom Distribusi":
+                    st.info("Atur distribusi usia sesuai kebutuhan target audience")
+                    
+                    # Slider untuk setiap grup usia
+                    age_18_24 = st.slider("Usia 18-24 tahun (%)", 0, 50, 20, help="Persentase pengunjung usia muda")
+                    age_25_34 = st.slider("Usia 25-34 tahun (%)", 0, 50, 30, help="Persentase pengunjung usia produktif")
+                    age_35_44 = st.slider("Usia 35-44 tahun (%)", 0, 50, 25, help="Persentase pengunjung usia menengah")
+                    age_45_54 = st.slider("Usia 45-54 tahun (%)", 0, 50, 15, help="Persentase pengunjung usia senior")
+                    age_55_plus = st.slider("Usia 55+ tahun (%)", 0, 50, 10, help="Persentase pengunjung usia lanjut")
+                    
+                    total_age = age_18_24 + age_25_34 + age_35_44 + age_45_54 + age_55_plus
+                    
+                    if total_age != 100:
+                        st.error(f"Total distribusi usia harus 100%. Saat ini: {total_age}%")
+                    else:
+                        age_distribution = {
+                            "18-24": age_18_24,
+                            "25-34": age_25_34, 
+                            "35-44": age_35_44,
+                            "45-54": age_45_54,
+                            "55+": age_55_plus
+                        }
+                        
+                elif age_mode == "🎲 Random Usia":
+                    st.info("Usia akan di-random secara merata dari 18-75 tahun")
+                    age_distribution = {"18-75": 100}
+                
+                # Tampilkan preview distribusi usia
+                if age_distribution:
+                    st.write("**Preview Distribusi Usia:**")
+                    age_preview_data = []
+                    for age_group, weight in age_distribution.items():
+                        age_preview_data.append({"Grup Usia": age_group, "Persentase": f"{weight}%"})
+                    
+                    age_preview_df = pd.DataFrame(age_preview_data)
+                    st.dataframe(age_preview_df, use_container_width=True, hide_index=True)
+                
+                # Tambahkan pengaturan Random Persona
+                st.markdown("<b>🎭 Pengaturan Persona</b>", unsafe_allow_html=True)
+                enable_random_personas = st.toggle(
+                    "Aktifkan Random Persona Generator",
+                    value=True,
+                    help="Generate persona random dengan karakteristik internasional"
+                )
+                
+                if enable_random_personas:
+                    random_persona_count = st.number_input(
+                        "Jumlah Random Persona",
+                        1, 20, 5,
+                        help="Berapa banyak persona random yang akan di-generate"
+                    )
+                    
+                    # Pilih template persona yang ingin digunakan
+                    persona_templates = st.multiselect(
+                        "Template Persona yang Digunakan:",
+                        ["Global Explorer", "Digital Nomad", "Cultural Enthusiast", "Tech Innovator", "Eco Activist"],
+                        default=["Global Explorer", "Digital Nomad", "Tech Innovator"],
+                        help="Pilih jenis persona yang akan di-generate secara random"
+                    )
+                    
+                    if st.button("🔄 Generate Random Personas"):
+                        from src.core.config import generate_random_personas
+                        if country_distribution:
+                            selected_countries = list(country_distribution.keys())
+                            random_personas = generate_random_personas(random_persona_count, selected_countries)
+                            st.session_state.custom_personas = [p.__dict__ for p in random_personas]
+                            st.success(f"Berhasil generate {len(random_personas)} persona random!")
+                            st.rerun()
+                        else:
+                            st.error("Pilih negara terlebih dahulu!")
+                
                 st.caption("Pengaturan lanjutan bisa dibuka jika ingin mengubah mode, proxy, dsb.")
                 with st.expander("Pengaturan Lanjutan", expanded=False):
                     uploaded_proxy_file = st.file_uploader("File Proksi (.txt)", type="txt")
@@ -280,7 +435,9 @@ with main_tabs[0]:
                     headless=headless_mode, returning_visitor_rate=returning_rate, max_retries_per_session=max_retries,
                     proxy_file=str(proxy_path) if proxy_path else None, personas=[Persona(**p) for p in st.session_state.custom_personas],
                     gender_distribution={"Male": male_dist, "Female": 100-male_dist}, device_distribution={"Desktop": desktop_dist, "Mobile": mobile_dist, "Tablet": tablet_dist},
-                    network_type=network_type, mode_type=mode_type, schedule_time=str(schedule_time) if enable_schedule and schedule_time else None
+                    country_distribution=country_distribution, age_distribution=age_distribution,
+                    network_type=network_type, mode_type=mode_type, schedule_time=str(schedule_time) if enable_schedule and schedule_time else None,
+                    enable_random_personas=enable_random_personas, random_persona_count=random_persona_count if enable_random_personas else 5
                 )
                 # Scheduler logic
                 import datetime
@@ -327,12 +484,14 @@ with main_tabs[0]:
                                 ("persona", "persona_counts"),
                                 ("device_type", "device_counts"),
                                 ("visitor_type", "visitor_counts"),
+                                ("country", "country_counts"),  # Tambahkan country_counts
+                                ("age_range", "age_counts"),  # Tambahkan age_counts
                             ]:
                                 if key in msg_data and counter in stats and stats[counter] is not None:
                                     stats[counter].update([msg_data[key]])
                             # Update gender_counts
-                            if "persona" in msg_data:
-                                persona_name = msg_data["persona"]
+                            if "gender" in msg_data:
+                                stats["gender_counts"].update([msg_data["gender"]])
                             goal_result = msg_data.get("goal_result", {}) if isinstance(msg_data, dict) else {}
                             if goal_result.get("mission_accomplished"):
                                 stats["missions_accomplished"] += 1
@@ -380,7 +539,7 @@ with main_tabs[0]:
                         if isinstance(pageLoad, (float, int)) and pd.notna(pageLoad): v4.metric("Page Load", f"{pageLoad:.0f} ms")
             with charts_placeholder.container():
                 st.subheader("Distribusi Sesi (Live)")
-                chart_cols = st.columns(3)
+                chart_cols = st.columns(5)  # Ubah dari 4 ke 5 kolom untuk menambah usia
                 # Persona
                 persona_counts = stats["persona_counts"]
                 if persona_counts:
@@ -408,6 +567,28 @@ with main_tabs[0]:
                         df_visitor.columns = ["Tipe Pengunjung", "Jumlah"]
                         fig3 = px.bar(df_visitor, x="Tipe Pengunjung", y="Jumlah", title="Tipe Pengunjung")
                         chart_cols[2].plotly_chart(fig3, use_container_width=True)
+                
+                # Tambahkan visualisasi distribusi negara jika ada data
+                if "country_counts" in stats and stats["country_counts"]:
+                    country_counts = stats["country_counts"]
+                    items = list(country_counts.items())
+                    if items:
+                        df_country = pd.DataFrame(items)
+                        df_country.columns = ["Negara", "Jumlah"]
+                        # Ambil top 10 negara saja untuk visualisasi yang lebih rapi
+                        df_country = df_country.nlargest(10, "Jumlah")
+                        fig4 = px.bar(df_country, x="Negara", y="Jumlah", title="Distribusi Negara (Top 10)")
+                        chart_cols[3].plotly_chart(fig4, use_container_width=True)
+                
+                # Tambahkan visualisasi distribusi usia jika ada data
+                if "age_counts" in stats and stats["age_counts"]:
+                    age_counts = stats["age_counts"]
+                    items = list(age_counts.items())
+                    if items:
+                        df_age = pd.DataFrame(items)
+                        df_age.columns = ["Usia", "Jumlah"]
+                        fig5 = px.bar(df_age, x="Usia", y="Jumlah", title="Distribusi Usia")
+                        chart_cols[4].plotly_chart(fig5, use_container_width=True)
             display_colorized_log(log_placeholder, st.session_state.log_messages)
             time.sleep(1); st.rerun()
 
